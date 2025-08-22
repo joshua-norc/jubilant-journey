@@ -1,0 +1,17 @@
+[salesforce_creds]
+# Choose one of the authentication methods below.
+# 1. Username, Password, and Security Token
+username = your_salesforce_username
+password = your_salesforce_password
+security_token = your_salesforce_security_token
+instance_url = login.salesforce.com
+
+# 2. Connected App (JWT Bearer Flow) - uncomment and fill if you use this method
+# private_key_file = /path/to/your/private.key
+# consumer_key = your_connected_app_consumer_key
+# username = your_salesforce_username
+
+[settings]
+# The target Salesforce environment. This must match the column names in the persona mapping file.
+# Options: QA2, Training, Prod
+environment = Training
