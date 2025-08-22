@@ -22,25 +22,28 @@ def run_duplicate_check(sf, users_to_add_df):
 
     existing_users = {}
 
-    # Query for existing users by email
-    if emails_to_check:
-        email_query = "SELECT Id, Email, Name FROM User WHERE Email IN ('{}')".format("','".join(emails_to_check))
-        try:
-            results = sf.query_all(email_query)
-            for record in results['records']:
-                existing_users[record['Email'].lower()] = {'Id': record['Id'], 'Note': f"Email match on User ID {record['Id']}"}
-        except SalesforceError as e:
-            print(f"Warning: Could not query for duplicate emails. {e}")
+    # Query for existing users by email or username
+    if emails_to_check or usernames_to_check:
+        # Combine checks into one query for efficiency
+        where_clauses = []
+        if emails_to_check:
+            where_clauses.append(f"Email IN ('{ "','".join(emails_to_check) }')")
+        if usernames_to_check:
+            where_clauses.append(f"Username IN ('{ "','".join(usernames_to_check) }')")
 
-    # Query for existing users by username
-    if usernames_to_check:
-        username_query = "SELECT Id, Username, Name FROM User WHERE Username IN ('{}')".format("','".join(usernames_to_check))
+        full_where_clause = " OR ".join(where_clauses)
+
+        query = f"SELECT Id, Email, Username, Name FROM User WHERE {full_where_clause}"
+
         try:
-            results = sf.query_all(username_query)
+            results = sf.query_all(query)
             for record in results['records']:
-                existing_users[record['Username'].lower()] = {'Id': record['Id'], 'Note': f"Username match on User ID {record['Id']}"}
+                if record.get('Email'):
+                    existing_users[record['Email'].lower()] = {'Id': record['Id'], 'Note': f"Email match on User ID {record['Id']}"}
+                if record.get('Username'):
+                    existing_users[record['Username'].lower()] = {'Id': record['Id'], 'Note': f"Username match on User ID {record['Id']}"}
         except SalesforceError as e:
-            print(f"Warning: Could not query for duplicate usernames. {e}")
+            print(f"Warning: Could not query for duplicate users. {e}")
 
     # Check for duplicates and update the report
     for index, row in preflight_report.iterrows():

@@ -1,10 +1,10 @@
 import pandas as pd
 from simple_salesforce.exceptions import SalesforceError
+from src.mapper import map_row_to_payload
 
-def create_salesforce_users(sf, processed_data, dry_run=True):
+def create_salesforce_users(sf, processed_data, mapping, dry_run=True):
     """
-    Creates users in Salesforce and assigns permissions.
-    Returns a detailed report of the outcome for each user.
+    Creates users in Salesforce using a dynamic mapping.
     """
     results_list = []
 
@@ -27,27 +27,29 @@ def create_salesforce_users(sf, processed_data, dry_run=True):
                 print(f"Warning: Could not query for Queue IDs. {e}")
 
     for index, user_data in processed_data.iterrows():
-        user_identifier = user_data['Username']
+        user_identifier = user_data.get('Username', f"Row_{index}")
         print(f"--- Processing user: {user_identifier} ---")
 
         result_record = {
             'Username': user_identifier, 'Status': '', 'SalesforceId': None, 'Error': '', 'AssignmentErrors': ''
         }
 
-        user_payload = {
-            'Username': user_data['Username'], 'Alias': user_data['Alias'], 'FirstName': user_data['FirstName'],
-            'LastName': user_data['LastName'], 'Email': user_data['Email (name version)'], 'ProfileId': user_data['ProfileID'],
-            'UserRoleId': user_data['RoleID'], 'TimeZoneSidKey': user_data['TimeZoneSidKey'], 'LocaleSidKey': user_data['LocaleSidKey'],
-            'LanguageLocaleKey': user_data['LanguageLocaleKey'], 'EmailEncodingKey': user_data['EmailEncodingKey'],
-            'IsActive': user_data['IsActive'],
-        }
-        if 'UserPermissionsInteractionUser' in user_data and pd.notna(user_data['UserPermissionsInteractionUser']):
-             user_payload['UserPermissionsInteractionUser'] = user_data['UserPermissionsInteractionUser']
-        if user_data['EnableSSO']:
-            user_payload['FederationIdentifier'] = user_data['FederationIdentifier']
+        # Use the mapper to create the payload
+        user_payload = map_row_to_payload(user_data, mapping)
+
+        # Add fields from the processed data that are not in the mapping file
+        if 'ProfileID' in user_data and pd.notna(user_data['ProfileID']):
+             user_payload['ProfileId'] = user_data['ProfileID']
+        if 'RoleID' in user_data and pd.notna(user_data['RoleID']):
+             user_payload['UserRoleId'] = user_data['RoleID']
+        if 'EnableSSO' in user_data and user_data['EnableSSO'] and 'FederationIdentifier' not in user_payload:
+            # If SSO is enabled but FederationIdentifier was not in the mapping, use a default
+            if 'FederationIdentifier' in user_data and pd.notna(user_data['FederationIdentifier']):
+                user_payload['FederationIdentifier'] = user_data['FederationIdentifier']
+
 
         if dry_run:
-            print(f"[DRY RUN] Would create user.")
+            print(f"[DRY RUN] Would create user with payload: {user_payload}")
             result_record['Status'] = 'Dry Run - Not Created'
             results_list.append(result_record)
             continue
@@ -55,9 +57,7 @@ def create_salesforce_users(sf, processed_data, dry_run=True):
         try:
             result = sf.User.create(user_payload)
             if not result.get('success', False):
-                error_msg = result.get('errors', 'Unknown error')
-                # Raise a generic exception to be caught by the outer block
-                raise Exception(f"User creation failed: {error_msg}")
+                raise Exception(f"User creation failed: {result.get('errors', 'Unknown error')}")
 
             user_id = result['id']
             print(f"Successfully created user with ID: {user_id}")
@@ -65,27 +65,27 @@ def create_salesforce_users(sf, processed_data, dry_run=True):
 
             assignment_errors = []
             # Assign Permission Set Groups
-            if pd.notna(user_data['PermissionSetGroupIDs']):
+            if 'PermissionSetGroupIDs' in user_data and pd.notna(user_data['PermissionSetGroupIDs']):
                 for psg_id in str(user_data['PermissionSetGroupIDs']).split(';'):
                     psg_id = psg_id.strip()
                     if not psg_id: continue
                     try:
                         sf.PermissionSetAssignment.create({'AssigneeId': user_id, 'PermissionSetGroupId': psg_id})
                         print(f"Assigned Permission Set Group {psg_id} to user {user_id}")
-                    except Exception as e: # Catch any assignment error
-                        err_msg = f"Failed to assign Permission Set Group {psg_id}: {e}"
+                    except Exception as e:
+                        err_msg = f"Failed to assign PSG {psg_id}: {e}"
                         print(err_msg)
                         assignment_errors.append(err_msg)
 
             # Assign to Queues
-            if pd.notna(user_data['Queues']):
+            if 'Queues' in user_data and pd.notna(user_data['Queues']):
                 for q_name in [q.strip() for q in user_data['Queues'].split('\n') if q.strip()]:
                     if q_name in queue_ids:
                         try:
                             sf.GroupMember.create({'GroupId': queue_ids[q_name], 'UserOrGroupId': user_id})
                             print(f"Assigned user {user_id} to queue {q_name}")
-                        except Exception as e: # Catch any assignment error
-                            err_msg = f"Failed to assign user to Queue {q_name}: {e}"
+                        except Exception as e:
+                            err_msg = f"Failed to assign to Queue {q_name}: {e}"
                             print(err_msg)
                             assignment_errors.append(err_msg)
                     else:
@@ -95,7 +95,7 @@ def create_salesforce_users(sf, processed_data, dry_run=True):
                 result_record['Status'] = 'Success with errors'
                 result_record['AssignmentErrors'] = "\n".join(assignment_errors)
 
-        except Exception as e: # Catch any error during the process
+        except Exception as e:
             print(f"Error processing user {user_identifier}: {e}")
             result_record.update({'Status': 'Failed', 'Error': str(e)})
 

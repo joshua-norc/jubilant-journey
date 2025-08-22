@@ -1,49 +1,61 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import pandas as pd
-from src.preflight import run_duplicate_check
+import os
+import tempfile
+from main import handle_preflight # Import the handler from main
 
-class TestPreflight(unittest.TestCase):
+class TestPreflightCommand(unittest.TestCase):
 
     def setUp(self):
-        """Set up a mock Salesforce connection and sample data."""
+        """Set up mock objects and a temporary directory."""
         self.mock_sf = MagicMock()
-        self.users_to_add = pd.DataFrame({
-            'Email (name version)': ['new@example.com', 'existing@example.com'],
-            'Username': ['new_user', 'existing_user'],
-            'FirstName': ['New', 'Existing'],
-            'LastName': ['User', 'User']
-        })
+        self.test_dir = tempfile.TemporaryDirectory()
+        # This test relies on the excel file created by `create_test_excel.py`
+        self.input_excel_path = 'reports/test_users.xlsx'
+        self.output_csv_path = os.path.join(self.test_dir.name, 'preflight.csv')
+        self.mock_config = MagicMock()
+        self.connect_patcher = patch('main.connect_to_salesforce', return_value=self.mock_sf)
+        self.connect_patcher.start()
 
-    def test_duplicate_check(self):
-        """Test that duplicates are correctly identified."""
-        # Mock the query results to simulate one existing user
-        self.mock_sf.query_all.side_effect = [
-            # Email query result
-            {'records': [{'Id': '005_existing_email', 'Email': 'existing@example.com', 'Name': 'Existing User'}]},
-            # Username query result
-            {'records': [{'Id': '005_existing_user', 'Username': 'existing_user', 'Name': 'Existing User'}]}
-        ]
+    def tearDown(self):
+        """Clean up and stop patches."""
+        self.test_dir.cleanup()
+        self.connect_patcher.stop()
 
-        report_df = run_duplicate_check(self.mock_sf, self.users_to_add)
+    def test_preflight_command_with_duplicates(self):
+        """Test the preflight command when duplicates are found."""
+        # Mock the SF query to return one of the users from the test file
+        self.mock_sf.query_all.return_value = {
+            'records': [{'Id': '005_existing_user', 'Email': 'Brunt-Kelli@norc.org', 'Username': 'Brunt-Kelli@norc.org@test.com', 'Name': 'Kelli Brunt'}]
+        }
 
-        self.assertEqual(len(report_df), 2)
-        # Check the new user
-        new_user_row = report_df[report_df['Username'] == 'new_user']
-        self.assertEqual(new_user_row['Action'].iloc[0], 'Create New User')
+        mock_args = MagicMock()
+        mock_args.input = self.input_excel_path
+        mock_args.output = self.output_csv_path
 
-        # Check the existing user
-        existing_user_row = report_df[report_df['Username'] == 'existing_user']
-        self.assertEqual(existing_user_row['Action'].iloc[0], 'Skip - Duplicate Found')
-        self.assertIn('Email match', existing_user_row['Notes'].iloc[0])
+        handle_preflight(mock_args, self.mock_config)
 
-    def test_no_duplicates_found(self):
-        """Test that no duplicates are found when none exist."""
+        self.assertTrue(os.path.exists(self.output_csv_path))
+        report_df = pd.read_csv(self.output_csv_path)
+
+        # There are 3 users in the test file, 1 is a duplicate
+        self.assertEqual(len(report_df), 3)
+        skipped_rows = report_df[report_df['Action'] == 'Skip - Duplicate Found']
+        self.assertEqual(len(skipped_rows), 1)
+        self.assertEqual(skipped_rows.iloc[0]['FirstName'], 'Kelli')
+
+    def test_preflight_command_no_duplicates(self):
+        """Test the preflight command when no duplicates are found."""
         self.mock_sf.query_all.return_value = {'records': []}
 
-        report_df = run_duplicate_check(self.mock_sf, self.users_to_add)
+        mock_args = MagicMock()
+        mock_args.input = self.input_excel_path
+        mock_args.output = self.output_csv_path
 
-        self.assertEqual(len(report_df), 2)
+        handle_preflight(mock_args, self.mock_config)
+
+        report_df = pd.read_csv(self.output_csv_path)
         self.assertTrue((report_df['Action'] == 'Create New User').all())
 
 if __name__ == '__main__':
