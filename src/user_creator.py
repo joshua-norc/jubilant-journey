@@ -8,24 +8,31 @@ def create_salesforce_users(sf, processed_data, dry_run=True):
     :param sf: The simple-salesforce connection object.
     :param processed_data: The DataFrame with processed user data.
     :param dry_run: If True, prints the actions without executing them.
+    :return: A list of IDs of the successfully created users.
     """
+    created_user_ids = []
+
     # Get Queue IDs from names
     queue_ids = {}
     if not dry_run:
         all_queue_names = set()
         for queues in processed_data['Queues'].dropna():
             for q_name in queues.split('\n'):
-                all_queue_names.add(q_name.strip())
+                # Ensure we don't add empty strings
+                stripped_q_name = q_name.strip()
+                if stripped_q_name:
+                    all_queue_names.add(stripped_q_name)
 
         if all_queue_names:
-            query = f"SELECT Id, Name FROM Group WHERE Type = 'Queue' AND Name IN {tuple(all_queue_names)}"
+            # Format the list of names for the SOQL IN clause
+            in_clause = "('" + "','".join(all_queue_names) + "')"
+            query = f"SELECT Id, Name FROM Group WHERE Type = 'Queue' AND Name IN {in_clause}"
             try:
                 results = sf.query_all(query)
                 for record in results['records']:
                     queue_ids[record['Name']] = record['Id']
             except SalesforceError as e:
                 print(f"Error querying for Queue IDs: {e}")
-
 
     for index, user_data in processed_data.iterrows():
         user_payload = {
@@ -43,8 +50,6 @@ def create_salesforce_users(sf, processed_data, dry_run=True):
             'IsActive': user_data['IsActive'],
         }
 
-        # This field might not be standard on all User objects
-        # It's better to check if it exists in the data before adding
         if 'UserPermissionsInteractionUser' in user_data and pd.notna(user_data['UserPermissionsInteractionUser']):
              user_payload['UserPermissionsInteractionUser'] = user_data['UserPermissionsInteractionUser']
 
@@ -52,9 +57,11 @@ def create_salesforce_users(sf, processed_data, dry_run=True):
             user_payload['FederationIdentifier'] = user_data['FederationIdentifier']
 
         print(f"--- Processing user: {user_data['Username']} ---")
+        user_id = None
         if dry_run:
             print(f"[DRY RUN] Would create user with payload: {user_payload}")
-            user_id = "DRY_RUN_USER_ID"
+            user_id = f"DRY_RUN_USER_ID_{index}"
+            created_user_ids.append(user_id)
         else:
             try:
                 print(f"Creating user: {user_data['Username']}")
@@ -62,12 +69,17 @@ def create_salesforce_users(sf, processed_data, dry_run=True):
                 if result.get('success', False):
                     user_id = result['id']
                     print(f"Successfully created user with ID: {user_id}")
+                    created_user_ids.append(user_id)
                 else:
                     print(f"Error creating user: {result.get('errors', 'Unknown error')}")
                     continue
             except SalesforceError as e:
                 print(f"Salesforce API error creating user: {e}")
                 continue
+
+        # Continue with assignments only if a user was "created"
+        if not user_id:
+            continue
 
         # Assign Permission Set Groups
         if pd.notna(user_data['PermissionSetGroupIDs']):
@@ -91,7 +103,7 @@ def create_salesforce_users(sf, processed_data, dry_run=True):
 
         # Assign to Queues
         if pd.notna(user_data['Queues']):
-            queue_names = [q.strip() for q in user_data['Queues'].split('\n')]
+            queue_names = [q.strip() for q in user_data['Queues'].split('\n') if q.strip()]
             for q_name in queue_names:
                 if dry_run:
                     print(f"[DRY RUN] Would assign user to queue: {q_name}")
@@ -108,6 +120,7 @@ def create_salesforce_users(sf, processed_data, dry_run=True):
                 else:
                     print(f"Could not find Queue ID for queue: {q_name}")
 
+    return created_user_ids
 
 if __name__ == '__main__':
     print("This module provides functions for user creation and configuration. It is not meant to be run directly.")

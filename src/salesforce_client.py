@@ -1,39 +1,54 @@
-import os
+import configparser
 from simple_salesforce import Salesforce
 
 class SalesforceClient:
     """
-    A client to connect to the Salesforce API.
+    A client to connect to the Salesforce API using settings from a config file.
     """
-    def __init__(self):
+    def __init__(self, config: configparser.ConfigParser):
         """
         Initializes the SalesforceClient.
-        Credentials are expected to be set as environment variables:
-        - SF_USERNAME
-        - SF_PASSWORD
-        - SF_SECURITY_TOKEN
-        - SF_INSTANCE_URL (e.g., 'login.salesforce.com' for production)
+        Reads credentials from the provided config object.
         """
-        self.username = os.getenv("SF_USERNAME")
-        self.password = os.getenv("SF_PASSWORD")
-        self.security_token = os.getenv("SF_SECURITY_TOKEN")
-        self.instance_url = os.getenv("SF_INSTANCE_URL")
+        self.config = config['salesforce_creds']
         self.sf = None
+        self.auth_method = None
 
-        if not all([self.username, self.password, self.security_token, self.instance_url]):
-            raise ValueError("Salesforce credentials are not fully set in environment variables. Please set SF_USERNAME, SF_PASSWORD, SF_SECURITY_TOKEN, and SF_INSTANCE_URL.")
+        # Determine authentication method
+        if self.config.get('private_key_file') and self.config.get('consumer_key'):
+            self.auth_method = 'jwt'
+            self.private_key_file = self.config['private_key_file']
+            self.consumer_key = self.config['consumer_key']
+            self.username = self.config.get('username') # username is also needed for JWT
+            if not self.username:
+                 raise ValueError("'username' is required for JWT Bearer Flow authentication.")
+        elif self.config.get('username') and self.config.get('password') and self.config.get('security_token'):
+            self.auth_method = 'password'
+            self.username = self.config['username']
+            self.password = self.config['password']
+            self.security_token = self.config['security_token']
+            self.instance_url = self.config.get('instance_url', 'login.salesforce.com')
+        else:
+            raise ValueError("Salesforce credentials are not fully set in config file. Provide either username/password/token or private_key_file/consumer_key.")
 
     def connect(self):
         """
-        Connects to Salesforce.
+        Connects to Salesforce using the determined authentication method.
         """
         try:
-            self.sf = Salesforce(
-                username=self.username,
-                password=self.password,
-                security_token=self.security_token,
-                instance_url=self.instance_url
-            )
+            if self.auth_method == 'jwt':
+                self.sf = Salesforce(
+                    username=self.username,
+                    consumer_key=self.consumer_key,
+                    privatekey_file=self.private_key_file
+                )
+            elif self.auth_method == 'password':
+                self.sf = Salesforce(
+                    username=self.username,
+                    password=self.password,
+                    security_token=self.security_token,
+                    instance_url=self.instance_url
+                )
             print("Successfully connected to Salesforce.")
         except Exception as e:
             print(f"Failed to connect to Salesforce: {e}")
@@ -42,22 +57,22 @@ class SalesforceClient:
 
 if __name__ == '__main__':
     # Example usage:
-    # Set up your environment variables before running this.
-    # In your terminal, run the following commands:
-    # export SF_USERNAME='your_username'
-    # export SF_PASSWORD='your_password'
-    # export SF_SECURITY_TOKEN='your_token'
-    # export SF_INSTANCE_URL='login.salesforce.com'
+    # 1. Create a config.ini file from the config.ini.example template
+    # 2. Fill in your credentials
 
-    try:
-        client = SalesforceClient()
-        sf_connection = client.connect()
+    config = configparser.ConfigParser()
+    # In a real run, this would be 'config.ini'
+    if not config.read('config.ini.example'):
+        print("Could not read config file. Make sure 'config.ini.example' exists.")
+    else:
+        try:
+            # Note: This example will fail if you use the placeholder values.
+            client = SalesforceClient(config)
+            sf_connection = client.connect()
 
-        if sf_connection:
-            print("Salesforce connection is live.")
-            # You can now use sf_connection to interact with Salesforce
-            # For example, to query some data:
-            # data = sf_connection.query("SELECT Id, Name FROM Account LIMIT 5")
-            # print(data)
-    except ValueError as e:
-        print(e)
+            if sf_connection:
+                print("Salesforce connection is live.")
+        except ValueError as e:
+            print(f"Configuration Error: {e}")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
