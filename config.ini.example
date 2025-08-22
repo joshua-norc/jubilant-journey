@@ -23,3 +23,6 @@ instance_url = login.salesforce.com
 # The target Salesforce environment. This must match the column names in the persona mapping file.
 # Options: QA2, Training, Prod
 environment = Training
+
+# Path to the field mapping file.
+mapping_file = mapping.properties
