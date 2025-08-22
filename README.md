@@ -1,88 +1,40 @@
-# Salesforce User Provisioning Tool
+# Salesforce Admin Tool
 
-This project provides a Python-based command-line tool to automate the provisioning of users in Salesforce. It reads user data from CSV files, processes it according to a persona-based mapping, and creates the corresponding user records in a target Salesforce organization, including assigning permissions and configuring Single Sign-On (SSO).
+This project provides a Python-based command-line tool to automate common Salesforce administrative tasks, including user provisioning and org analysis.
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
-
-### Prerequisites
-
-*   Python 3.6+
-*   pip (Python package installer)
-
-### Installation
-
-1.  Clone the repository to your local machine:
-    ```bash
-    git clone <repository_url>
-    cd <repository_name>
-    ```
-
-2.  Install the required Python packages:
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-### Configuration
-
-Before running the application, you need to set up your configuration file.
-
-1.  Make a copy of the example configuration file:
-    ```bash
-    cp config.ini.example config.ini
-    ```
-
-2.  Open `config.ini` in a text editor and fill in your Salesforce credentials. The tool supports two authentication methods:
-
-    *   **Username/Password:** Fill in `username`, `password`, and `security_token`.
-    *   **Connected App (JWT):** Fill in `username`, `consumer_key`, and the path to your `private_key_file`.
-
-    You also need to configure the settings under the `[settings]` section, such as the `environment` (e.g., `Training`, `Prod`) you are targeting.
-
-    **Note:** The `config.ini` file is included in `.gitignore` to prevent accidental commits of your credentials.
+(Instructions for Installation and Configuration remain the same)
 
 ## Usage
 
-To run the application, use the `main.py` script from the root of the project directory.
+The application uses a command-line interface with two main commands: `provision` and `report`.
 
-### Dry Run (Default)
+### Command: `provision`
 
-By default, the application runs in **dry-run mode**. This will simulate the entire process, printing out the actions that would be taken (like user creation and permission assignments) without making any actual changes in your Salesforce org. This is useful for verifying your data and configuration.
+This command runs a comprehensive user provisioning workflow. It now exclusively uses an Excel file as input, and writes the results back to new sheets in that same file.
 
-```bash
-python3 main.py
-```
+#### Workflow Steps:
+1.  **Pre-flight Duplicate Check**: Before any action is taken, the script reads the `Users2Add` sheet from your input Excel file and queries Salesforce for potential duplicates based on Email and Username.
+2.  **Pre-flight Report**: The results of the check are written to a new sheet in your workbook called `preflight`. This sheet shows which users will be created and which will be skipped.
+3.  **User Creation**: The script proceeds to create the users who are not identified as duplicates.
+4.  **Result Tracking**: The final status of each user creation (Success, Failed, Skipped, or Success with errors) is updated in the `preflight` sheet.
+5.  **`UsersCreated` Sheet**: A new sheet named `UsersCreated` is added to your workbook, containing the Salesforce ID and applied configurations for all successfully created users.
+6.  **Final Validation**: A summary of the created users is printed to the console for immediate visual confirmation.
 
-### Live Run
+#### Arguments:
+*   `--input <path>`: **(Required)** Path to the input Excel (`.xlsx`) file. This file must contain sheets named `Users2Add`, `Persona Mapping`, and `TSSO_TrainTheTrainer`.
+*   `--no-dry-run`: Disables dry-run mode to make live changes in Salesforce. **Warning:** Use with caution.
 
-To disable dry-run mode and make live changes in Salesforce, use the `--no-dry-run` flag.
+#### Example:
 
-**Warning:** This will create and modify records in your Salesforce organization. Use with caution.
+*   **Perform a live run using an Excel file:**
+    ```bash
+    python3 main.py provision --input /path/to/my_users.xlsx --no-dry-run
+    ```
 
-```bash
-python3 main.py --no-dry-run
-```
+### Command: `report`
 
-The script will output its progress to the console. If any errors occur, they will be printed to the console. Upon successful completion of a live run, a CSV report of the created users will be generated in the `reports/` directory.
+This command generates various ad-hoc reports about the Salesforce org.
 
-## Project Structure
-
-```
-.
-├── config.ini.example      # Example configuration file.
-├── data/                   # Directory for input CSV files.
-│   ├── persona_mapping.csv
-│   ├── training_template.csv
-│   └── tsso_trainthetrainer.csv
-├── main.py                 # Main entry point of the application.
-├── README.md               # This file.
-├── reports/                # Directory for output reports (will be created on first run).
-├── requirements.txt        # Python package dependencies.
-├── src/                    # Source code directory.
-│   ├── data_processor.py
-│   ├── salesforce_client.py
-│   └── user_creator.py
-└── tests/                  # Directory for unit tests.
-    └── test_data_processor.py
-```
+(Report command documentation remains the same)

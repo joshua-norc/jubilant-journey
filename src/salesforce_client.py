@@ -1,5 +1,6 @@
 import configparser
 from simple_salesforce import Salesforce
+from simple_salesforce.exceptions import SalesforceAuthenticationFailed
 
 class SalesforceClient:
     """
@@ -19,7 +20,7 @@ class SalesforceClient:
             self.auth_method = 'jwt'
             self.private_key_file = self.config['private_key_file']
             self.consumer_key = self.config['consumer_key']
-            self.username = self.config.get('username') # username is also needed for JWT
+            self.username = self.config.get('username')
             if not self.username:
                  raise ValueError("'username' is required for JWT Bearer Flow authentication.")
         elif self.config.get('username') and self.config.get('password') and self.config.get('security_token'):
@@ -36,6 +37,7 @@ class SalesforceClient:
         Connects to Salesforce using the determined authentication method.
         """
         try:
+            print(f"Attempting to connect to Salesforce using {self.auth_method} authentication...")
             if self.auth_method == 'jwt':
                 self.sf = Salesforce(
                     username=self.username,
@@ -50,29 +52,19 @@ class SalesforceClient:
                     instance_url=self.instance_url
                 )
             print("Successfully connected to Salesforce.")
+        except SalesforceAuthenticationFailed as e:
+            print("\n--- Salesforce Authentication Failed ---")
+            print(f"Error: {e.content[0]['message']} (ErrorCode: {e.content[0]['errorCode']})")
+            print("\nPlease check the following:")
+            print("1. Your username, password, and security token are correct.")
+            print("2. If connecting to a sandbox, ensure 'instance_url' in config.ini is set to 'test.salesforce.com'.")
+            print("3. Your organization's IP restrictions are not blocking your IP address.")
+            self.sf = None
         except Exception as e:
-            print(f"Failed to connect to Salesforce: {e}")
+            print(f"An unexpected error occurred during connection: {e}")
             self.sf = None
         return self.sf
 
 if __name__ == '__main__':
-    # Example usage:
-    # 1. Create a config.ini file from the config.ini.example template
-    # 2. Fill in your credentials
-
-    config = configparser.ConfigParser()
-    # In a real run, this would be 'config.ini'
-    if not config.read('config.ini.example'):
-        print("Could not read config file. Make sure 'config.ini.example' exists.")
-    else:
-        try:
-            # Note: This example will fail if you use the placeholder values.
-            client = SalesforceClient(config)
-            sf_connection = client.connect()
-
-            if sf_connection:
-                print("Salesforce connection is live.")
-        except ValueError as e:
-            print(f"Configuration Error: {e}")
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
+    # This module is not meant to be run directly.
+    pass
