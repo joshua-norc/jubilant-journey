@@ -1,10 +1,10 @@
-# Salesforce User Provisioning Tool
+# Salesforce Admin Tool
 
-This project provides a Python-based command-line tool to automate the provisioning of users in Salesforce. It reads user data from CSV files, processes it according to a persona-based mapping, and creates the corresponding user records in a target Salesforce organization, including assigning permissions and configuring Single Sign-On (SSO).
+This project provides a Python-based command-line tool to automate common Salesforce administrative tasks, including user provisioning and org analysis.
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
+These instructions will get you a copy of the project up and running on your local machine.
 
 ### Prerequisites
 
@@ -13,12 +13,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Installation
 
-1.  Clone the repository to your local machine:
-    ```bash
-    git clone <repository_url>
-    cd <repository_name>
-    ```
-
+1.  Clone the repository to your local machine.
 2.  Install the required Python packages:
     ```bash
     pip install -r requirements.txt
@@ -26,7 +21,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Configuration
 
-Before running the application, you need to set up your configuration file.
+Before running the application, you must set up your configuration file.
 
 1.  Make a copy of the example configuration file:
     ```bash
@@ -34,55 +29,65 @@ Before running the application, you need to set up your configuration file.
     ```
 
 2.  Open `config.ini` in a text editor and fill in your Salesforce credentials. The tool supports two authentication methods:
-
     *   **Username/Password:** Fill in `username`, `password`, and `security_token`.
     *   **Connected App (JWT):** Fill in `username`, `consumer_key`, and the path to your `private_key_file`.
 
-    You also need to configure the settings under the `[settings]` section, such as the `environment` (e.g., `Training`, `Prod`) you are targeting.
+    You also need to configure the target `environment` (e.g., `Training`, `Prod`) under the `[settings]` section.
 
-    **Note:** The `config.ini` file is included in `.gitignore` to prevent accidental commits of your credentials.
+    **Note:** `config.ini` is gitignored to prevent committing credentials.
 
 ## Usage
 
-To run the application, use the `main.py` script from the root of the project directory.
+The application uses a command-line interface with two main commands: `provision` and `report`.
 
-### Dry Run (Default)
+### Command: `provision`
 
-By default, the application runs in **dry-run mode**. This will simulate the entire process, printing out the actions that would be taken (like user creation and permission assignments) without making any actual changes in your Salesforce org. This is useful for verifying your data and configuration.
+This command provisions users based on an input file.
 
-```bash
-python3 main.py
-```
+#### Arguments:
+*   `--input <path>`: Path to the input data. Can be a directory of CSV files (defaults to `./data`) or a single Excel (`.xlsx`) file.
+*   `--no-dry-run`: Disables dry-run mode to make live changes in Salesforce. **Warning:** Use with caution.
 
-### Live Run
+#### Examples:
 
-To disable dry-run mode and make live changes in Salesforce, use the `--no-dry-run` flag.
+*   **Perform a dry run using data from the default `./data` directory:**
+    ```bash
+    python3 main.py provision
+    ```
 
-**Warning:** This will create and modify records in your Salesforce organization. Use with caution.
+*   **Perform a live run using an Excel file:**
+    ```bash
+    python3 main.py provision --input /path/to/my_users.xlsx --no-dry-run
+    ```
 
-```bash
-python3 main.py --no-dry-run
-```
+### Command: `report`
 
-The script will output its progress to the console. If any errors occur, they will be printed to the console. Upon successful completion of a live run, a CSV report of the created users will be generated in the `reports/` directory.
+This command generates various reports about the Salesforce org.
+
+#### Arguments:
+*   `--output <path>`: (Optional) Path to save the report as a CSV file. If omitted, the report is printed to the console.
+
+#### Sub-Commands:
+
+*   **`users-by-permset`**: List users assigned to a specific permission set.
+    *   `--name <permset_name>`: The name of the permission set.
+    *   Example: `python3 main.py report users-by-permset --name "My_Custom_Permission_Set" --output permset_users.csv`
+
+*   **`list-permissions`**: List all permission sets, sorted by last modified date.
+    *   Example: `python3 main.py report list-permissions`
+
+*   **`list-connected-apps`**: List all connected apps.
+    *   Example: `python3 main.py report list-connected-apps`
+
+*   **`app-details`**: Get details for a specific connected app.
+    *   `--name <app_name>`: The name of the connected app.
+    *   Example: `python3 main.py report app-details --name "My_Connected_App"`
+
 
 ## Project Structure
 
-```
-.
-├── config.ini.example      # Example configuration file.
-├── data/                   # Directory for input CSV files.
-│   ├── persona_mapping.csv
-│   ├── training_template.csv
-│   └── tsso_trainthetrainer.csv
-├── main.py                 # Main entry point of the application.
-├── README.md               # This file.
-├── reports/                # Directory for output reports (will be created on first run).
-├── requirements.txt        # Python package dependencies.
-├── src/                    # Source code directory.
-│   ├── data_processor.py
-│   ├── salesforce_client.py
-│   └── user_creator.py
-└── tests/                  # Directory for unit tests.
-    └── test_data_processor.py
-```
+The project is organized into several directories:
+*   `src/`: Contains the core Python source code.
+*   `data/`: Holds the example input CSV files.
+*   `reports/`: The default output directory for generated reports.
+*   `tests/`: Contains all unit tests.
