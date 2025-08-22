@@ -69,5 +69,40 @@ def generate_report(sf, user_ids):
     except Exception as e:
         print(f"An unexpected error occurred during report generation: {e}")
 
+def validate_created_users(sf, user_ids):
+    """
+    Queries for the newly created users and prints a summary for visual validation.
+    """
+    if not user_ids:
+        return # No users to validate
+
+    print("\n--- Final Validation Step ---")
+    print(f"Querying for {len(user_ids)} newly created users to validate their status...")
+
+    id_list_str = "('" + "','".join(user_ids) + "')"
+    query = f"SELECT Id, Name, Username, Profile.Name, IsActive FROM User WHERE Id IN {id_list_str}"
+
+    try:
+        results = sf.query_all(query)
+        records = results['records']
+
+        processed_records = []
+        for record in records:
+            rec_dict = dict(record)
+            if rec_dict.get('Profile'):
+                rec_dict['ProfileName'] = rec_dict['Profile']['Name']
+                del rec_dict['Profile']
+            else:
+                rec_dict['ProfileName'] = None
+            del rec_dict['attributes']
+            processed_records.append(rec_dict)
+
+        validation_df = pd.DataFrame(processed_records)
+        print("Validation Results:")
+        print(validation_df.to_string())
+    except SalesforceError as e:
+        print(f"Error during final validation query: {e}")
+
+
 if __name__ == '__main__':
     print("This module provides functions for generating reports. It is not meant to be run directly.")

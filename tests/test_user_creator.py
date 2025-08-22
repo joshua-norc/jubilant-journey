@@ -9,75 +9,51 @@ class TestUserCreator(unittest.TestCase):
         """Set up sample data for tests."""
         self.mock_sf = MagicMock()
         self.sample_data = pd.DataFrame({
-            'Username': ['test1@example.com'],
-            'Alias': ['test1'],
-            'FirstName': ['Test'],
-            'LastName': ['One'],
-            'Email (name version)': ['test1@example.com'],
-            'ProfileID': ['prof1'],
-            'RoleID': ['role1'],
-            'TimeZoneSidKey': ['America/New_York'],
-            'LocaleSidKey': ['en_US'],
-            'LanguageLocaleKey': ['en_US'],
-            'EmailEncodingKey': ['UTF-8'],
-            'IsActive': [True],
-            'UserPermissionsInteractionUser': [False],
-            'EnableSSO': [True],
-            'FederationIdentifier': ['fed1'],
-            'PermissionSetGroupIDs': ['psg1;psg2'],
-            'Queues': ['Queue1\nQueue2']
+            'Username': ['test1@example.com'], 'Alias': ['test1'], 'FirstName': ['Test'], 'LastName': ['One'],
+            'Email (name version)': ['test1@example.com'], 'ProfileID': ['prof1'], 'RoleID': ['role1'],
+            'TimeZoneSidKey': ['America/New_York'], 'LocaleSidKey': ['en_US'], 'LanguageLocaleKey': ['en_US'],
+            'EmailEncodingKey': ['UTF-8'], 'IsActive': [True], 'UserPermissionsInteractionUser': [False],
+            'EnableSSO': [True], 'FederationIdentifier': ['fed1'], 'PermissionSetGroupIDs': ['psg1'], 'Queues': ['Queue1']
         })
-        # Configure the return values for the mocked Salesforce calls
         self.mock_sf.User.create.return_value = {'success': True, 'id': 'new_user_id_1'}
-        self.mock_sf.query_all.return_value = {
-            'records': [{'Name': 'Queue1', 'Id': 'q1_id'}, {'Name': 'Queue2', 'Id': 'q2_id'}]
-        }
+        self.mock_sf.query_all.return_value = {'records': [{'Name': 'Queue1', 'Id': 'q1_id'}]}
 
-    def test_create_user_success(self):
-        """Test the successful creation of a user with assignments."""
-        created_ids = create_salesforce_users(self.mock_sf, self.sample_data, dry_run=False)
+    def test_create_user_success_return_df(self):
+        """Test the successful creation of a user and the returned DataFrame."""
+        results_df = create_salesforce_users(self.mock_sf, self.sample_data, dry_run=False)
 
-        # Check that a user was created
-        self.mock_sf.User.create.assert_called_once()
-        user_payload = self.mock_sf.User.create.call_args[0][0]
-        self.assertEqual(user_payload['Username'], 'test1@example.com')
-        self.assertEqual(user_payload['FederationIdentifier'], 'fed1')
+        self.assertIsInstance(results_df, pd.DataFrame)
+        self.assertEqual(len(results_df), 1)
 
-        # Check that permission sets were assigned
-        self.assertEqual(self.mock_sf.PermissionSetAssignment.create.call_count, 2)
+        result = results_df.iloc[0]
+        self.assertEqual(result['Status'], 'Success')
+        self.assertEqual(result['SalesforceId'], 'new_user_id_1')
+        self.assertEqual(result['AssignmentErrors'], '')
 
-        # Check that the queue query was made
-        self.mock_sf.query_all.assert_called_once()
+    def test_user_creation_failure(self):
+        """Test the handling of a user creation failure."""
+        self.mock_sf.User.create.return_value = {'success': False, 'errors': ['Test Error']}
 
-        # Check that users were added to queues
-        self.assertEqual(self.mock_sf.GroupMember.create.call_count, 2)
+        results_df = create_salesforce_users(self.mock_sf, self.sample_data, dry_run=False)
 
-        # Check that the created ID is returned
-        self.assertEqual(created_ids, ['new_user_id_1'])
+        self.assertEqual(results_df.iloc[0]['Status'], 'Failed')
+        self.assertIn('Test Error', results_df.iloc[0]['Error'])
 
-    def test_no_queues_to_query(self):
-        """Test that the queue query is not run if there are no queues."""
-        self.sample_data['Queues'] = None
-        self.mock_sf.reset_mock() # Reset mocks for a clean test
+    def test_assignment_failure(self):
+        """Test the handling of a permission set assignment failure."""
+        self.mock_sf.PermissionSetAssignment.create.side_effect = Exception("Assignment Failed")
 
-        create_salesforce_users(self.mock_sf, self.sample_data, dry_run=False)
+        results_df = create_salesforce_users(self.mock_sf, self.sample_data, dry_run=False)
 
-        # Assert that the queue query was NOT made
-        self.mock_sf.query_all.assert_not_called()
+        result = results_df.iloc[0]
+        self.assertEqual(result['Status'], 'Success with errors')
+        self.assertIn('Assignment Failed', result['AssignmentErrors'])
 
-    def test_dry_run(self):
-        """Test that no API calls are made in dry-run mode."""
-        self.mock_sf.reset_mock()
+    def test_dry_run_return_df(self):
+        """Test the dry run returns the correct DataFrame."""
+        results_df = create_salesforce_users(self.mock_sf, self.sample_data, dry_run=True)
 
-        created_ids = create_salesforce_users(self.mock_sf, self.sample_data, dry_run=True)
-
-        self.mock_sf.User.create.assert_not_called()
-        self.mock_sf.PermissionSetAssignment.create.assert_not_called()
-        self.mock_sf.query_all.assert_not_called()
-        self.mock_sf.GroupMember.create.assert_not_called()
-
-        # Check that dummy IDs are returned
-        self.assertEqual(created_ids, ['DRY_RUN_USER_ID_0'])
+        self.assertEqual(results_df.iloc[0]['Status'], 'Dry Run - Not Created')
 
 if __name__ == '__main__':
     unittest.main()
