@@ -13,8 +13,8 @@ This project provides a Python-based command-line tool to automate common Salesf
 2. Install dependencies: `pip install -r requirements.txt`
 
 ### Configuration
-1.  **Create `config.ini`:** Copy `config.ini.example` to `config.ini` and fill in your Salesforce credentials.
-2.  **Create `mapping.properties`:** Copy `mapping.properties.example` (if it exists) or create a new `mapping.properties` file. This file controls how columns in your spreadsheet map to fields in Salesforce. The format is `Spreadsheet Column Name=SalesforceApiFieldName`.
+1.  **Create `config.ini`:** Copy `config.ini.example` to `config.ini` and fill in your Salesforce credentials. For sandbox connections, the easiest method is to set `domain = test`. For production or developer orgs, use `instance_url = login.salesforce.com`.
+2.  **Create `mapping.properties`:** Create a `mapping.properties` file. This file controls how columns in your spreadsheet map to fields in Salesforce. The format is `Spreadsheet Column Name=SalesforceApiFieldName`.
 
 ## User Provisioning Workflow
 

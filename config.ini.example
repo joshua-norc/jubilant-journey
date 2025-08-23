@@ -1,20 +1,24 @@
 [salesforce_creds]
-# Choose one of the authentication methods below.
-
 # --- Method 1: Username, Password, and Security Token ---
 username = your_salesforce_username
 password = your_salesforce_password
 security_token = your_salesforce_security_token
 
-# The instance_url for your org.
-# For production or a developer org, use: login.salesforce.com
-# For a sandbox, use: test.salesforce.com
+# --- Connection Details (Choose one) ---
+
+# Option A: For standard sandboxes, use the 'domain' parameter.
+# This is the simplest method for sandboxes.
+# domain = test
+
+# Option B: For production, developer orgs, or custom domains, use 'instance_url'.
+# For production/developer orgs, use: login.salesforce.com
+# For a custom domain, use the full URL, e.g., https://your-domain.my.salesforce.com
 instance_url = login.salesforce.com
 
 
 # --- Method 2: Connected App (JWT Bearer Flow) ---
 # Uncomment and fill if you use this method.
-# You still need to provide the 'username' from above.
+# You still need to provide the 'username' from Method 1.
 # private_key_file = /path/to/your/private.key
 # consumer_key = your_connected_app_consumer_key
 
