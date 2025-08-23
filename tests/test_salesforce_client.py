@@ -21,8 +21,7 @@ class TestSalesforceClient(unittest.TestCase):
         mock_salesforce_class.assert_called_once_with(
             username='testuser',
             password='testpassword',
-            security_token='testtoken',
-            instance_url='login.salesforce.com' # The default
+            security_token='testtoken'
         )
 
     @patch('src.salesforce_client.Salesforce')
@@ -65,6 +64,28 @@ class TestSalesforceClient(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "'username' is required for JWT"):
             SalesforceClient(config)
 
+
+    @patch('src.salesforce_client.Salesforce')
+    def test_password_auth_with_domain(self, mock_salesforce_class):
+        """Test password auth with the domain parameter for sandboxes."""
+        config = configparser.ConfigParser()
+        config['salesforce_creds'] = {
+            'username': 'testuser',
+            'password': 'testpassword',
+            'security_token': 'testtoken',
+            'domain': 'test'
+        }
+
+        client = SalesforceClient(config)
+        client.connect()
+
+        # Check that instance_url is NOT passed when domain is present
+        mock_salesforce_class.assert_called_once_with(
+            username='testuser',
+            password='testpassword',
+            security_token='testtoken',
+            domain='test'
+        )
 
 if __name__ == '__main__':
     unittest.main()
