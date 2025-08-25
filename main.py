@@ -72,6 +72,59 @@ def handle_create_users(args, config):
     except Exception as e:
         print(f"Error saving creation results to {args.output}: {e}")
 
+def handle_provision_workflow(args, config):
+    """Runs the full, orchestrated provisioning workflow."""
+    print("--- Running Full Provisioning Workflow ---")
+
+    # --- 1. Load all data from source Excel ---
+    try:
+        print(f"Loading data from {args.input}...")
+        excel_file = pd.ExcelFile(args.input)
+        user_df = excel_file.parse('Training Template')
+        persona_df = excel_file.parse('Persona Mapping')
+        sso_df = excel_file.parse('TSSO_TrainTheTrainer')
+        settings = config['settings']
+        environment = settings.get('environment', 'Training')
+        mapping = load_mapping(settings.get('mapping_file'))
+    except Exception as e:
+        print(f"Error loading initial data: {e}")
+        return
+
+    # --- 2. Connect to Salesforce ---
+    sf_connection = connect_to_salesforce(config)
+    if not sf_connection: return
+
+    # --- 3. Pre-flight Check ---
+    preflight_report = run_duplicate_check(sf_connection, user_df)
+
+    # --- 4. User Creation ---
+    users_to_create_df = preflight_report[preflight_report['Action'] == 'Create New User'].copy()
+    if users_to_create_df.empty:
+        print("\nNo new users to create after pre-flight check.")
+        final_report = preflight_report
+    else:
+        print(f"\nFound {len(users_to_create_df)} users to create.")
+        processed_data = process_dataframes(users_to_create_df, persona_df, sso_df, environment)
+        creation_results_df = create_salesforce_users(sf_connection, processed_data, mapping, args.dry_run)
+
+        # --- 5. Consolidate Results ---
+        final_report = preflight_report.merge(
+            creation_results_df, on='Username', how='left'
+        )
+        final_report['Status'].fillna('Skipped', inplace=True)
+
+    # --- 6. Final Validation ---
+    if not args.dry_run:
+        successful_ids = list(final_report[final_report['Status'] == 'Success']['SalesforceId'].dropna())
+        validate_created_users(sf_connection, successful_ids)
+
+    # --- 7. Save Final Report ---
+    try:
+        final_report.to_csv(args.output, index=False)
+        print(f"\nFull workflow complete. Final report saved to: {args.output}")
+    except Exception as e:
+        print(f"Error saving final report: {e}")
+
 def handle_validate(args, config):
     """Validates created users."""
     print("--- Running Validation ---")
@@ -143,6 +196,13 @@ def main():
     parser_validate.add_argument('--input', type=str, required=True, help="Path to the creation results CSV.")
     parser_validate.add_argument('--excel-source', type=str, required=True, help="Path to the original Excel file to check the 'added by' column.")
     parser_validate.set_defaults(func=handle_validate)
+
+    # --- Full Provision Workflow Command ---
+    parser_provision = subparsers.add_parser('provision', help='Run the full pre-flight, create, and validate workflow in one go.')
+    parser_provision.add_argument('--input', type=str, required=True, help="Path to the source Excel (.xlsx) file.")
+    parser_provision.add_argument('--output', type=str, default='final_provision_report.csv', help="Path to save the final, consolidated CSV report.")
+    parser_provision.add_argument('--no-dry-run', action='store_false', dest='dry_run', help="Disable dry-run mode to make live changes.")
+    parser_provision.set_defaults(dry_run=True, func=handle_provision_workflow)
 
     args = parser.parse_args()
 
