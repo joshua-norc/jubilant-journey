@@ -1,64 +1,47 @@
 # Salesforce Admin Tool
 
-This project provides a Python-based command-line tool to automate common Salesforce administrative tasks. The main workflow is a multi-step user provisioning process, but it also includes ad-hoc reporting capabilities.
+This project provides a Python-based command-line tool to automate common Salesforce administrative tasks.
 
 ## Getting Started
+(Instructions for Installation and Configuration remain the same)
 
-### Prerequisites
-* Python 3.6+
-* pip
+## Usage
 
-### Installation
-1. Clone the repository.
-2. Install dependencies: `pip install -r requirements.txt`
+The application supports two primary modes for user provisioning: a simplified, single-command workflow, and a manual, step-by-step workflow for more granular control.
 
-### Configuration
-1.  **Create `config.ini`:** Copy `config.ini.example` to `config.ini` and fill in your Salesforce credentials. For sandbox connections, the easiest method is to set `domain = test`. For production or developer orgs, use `instance_url = login.salesforce.com`.
-2.  **Create `mapping.properties`:** Create a `mapping.properties` file. This file controls how columns in your spreadsheet map to fields in Salesforce. The format is `Spreadsheet Column Name=SalesforceApiFieldName`.
+### Recommended Workflow: `provision`
+This single command runs the entire, orchestrated user provisioning workflow. It performs the pre-flight duplicate check, creates new users, and runs a final validation, all in one step. It passes data in memory and produces a single, consolidated CSV report at the end. This is the easiest way to use the tool.
 
-## User Provisioning Workflow
-
-This workflow allows you to safely check for duplicates, create users, and validate the results in three distinct, file-based steps.
-
-### Step 1: `preflight`
-This command runs a duplicate check against your Salesforce org.
-
-*   **Input:** An Excel file (`.xlsx`) containing a sheet named `Training Template`.
-*   **Action:** Queries Salesforce for users with matching emails or usernames from the input sheet. The search is based on the `Email (name version)` column.
-*   **Output:** A CSV file (`preflight_report.csv` by default) that lists every user from the input and an `Action` column indicating whether they are a potential duplicate or safe to create.
+*   **Arguments:**
+    *   `--input <path>`: **(Required)** Path to the source Excel (`.xlsx`) file.
+    *   `--output <path>`: Path to save the final consolidated CSV report.
+    *   `--no-dry-run`: Disables dry-run mode to make live changes.
 
 *   **Example:**
     ```bash
-    python3 main.py preflight --input path/to/MyUserList.xlsx --output preflight_v1.csv
+    python3 main.py provision --input path/to/MyUserList.xlsx --output final_report.csv --no-dry-run
     ```
 
-### Step 2: `create-users`
-This command creates users in Salesforce based on the results of a pre-flight check, using the field mappings you provide.
+### Manual Step-by-Step Workflow
+For advanced users who want to inspect the results of each stage, the following commands can be run in sequence.
 
-*   **Input:**
-    1. A pre-flight CSV report (the output from Step 1).
-    2. The original source Excel file (for persona and SSO mapping).
-*   **Action:** Creates users who are marked as `Create New User` in the pre-flight report. It uses your `mapping.properties` file to build the user record.
-*   **Output:** A CSV file (`creation_results.csv` by default) with the detailed results of each user creation attempt.
+#### Step 1: `preflight`
+*   **Action:** Runs a duplicate check.
+*   **Input:** Source Excel file.
+*   **Output:** A `preflight_report.csv` file.
+*   **Example:** `python3 main.py preflight --input path/to/MyUserList.xlsx --output preflight.csv`
 
-*   **Example (Live Run):**
-    ```bash
-    python3 main.py create-users --input preflight_v1.csv --excel-source path/to/MyUserList.xlsx --no-dry-run
-    ```
+#### Step 2: `create-users`
+*   **Action:** Creates users based on the pre-flight report.
+*   **Input:** The `preflight.csv` from Step 1 and the original Excel file.
+*   **Output:** A `creation_results.csv` file.
+*   **Example:** `python3 main.py create-users --input preflight.csv --excel-source path/to/MyUserList.xlsx`
 
-### Step 3: `validate`
-This command runs a final validation check on the users who were successfully created, with special filtering logic.
-
-*   **Input:**
-    1. A creation results CSV file (the output from Step 2).
-    2. The original source Excel file.
-*   **Action:** Queries Salesforce for the users with a "Success" status. It then filters these users to only those where the `added by` column in the source Excel file is 'Josh'.
-*   **Output:** A summary table printed to the console for immediate visual inspection.
-
-*   **Example:**
-    ```bash
-    python3 main.py validate --input creation_results.csv --excel-source path/to/MyUserList.xlsx
-    ```
+#### Step 3: `validate`
+*   **Action:** Validates the created users.
+*   **Input:** The `creation_results.csv` from Step 2 and the original Excel file.
+*   **Output:** A summary printed to the console.
+*   **Example:** `python3 main.py validate --input creation_results.csv --excel-source path/to/MyUserList.xlsx`
 
 ## Ad-hoc Reporting
-The `report` command can be used to generate various ad-hoc reports about the Salesforce org. (See `--help` for more details).
+The `report` command can be used to generate various ad-hoc reports about the Salesforce org. (This functionality is not yet fully implemented).
